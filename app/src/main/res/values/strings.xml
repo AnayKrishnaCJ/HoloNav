@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HoloNav</string>
+
+    <!-- Navigation -->
+    <string name="nav_map">Map</string>
+    <string name="nav_ar">AR View</string>
+    <string name="nav_calibrate">Calibrate</string>
+
+    <!-- Map -->
+    <string name="select_destination">Select Destination</string>
+    <string name="start_navigation">Start Navigation</string>
+    <string name="stop_navigation">Stop Navigation</string>
+    <string name="no_route">No route available</string>
+    <string name="route_found">Route found: %1$d waypoints, ~%2$d meters</string>
+    <string name="position_label">Position: (%.0f, %.0f)</string>
+    <string name="confidence_label">Confidence: %d%%</string>
+
+    <!-- Calibration -->
+    <string name="calibration_title">Wi-Fi Calibration</string>
+    <string name="calibration_instruction">Tap a location on the map to record its Wi-Fi fingerprint</string>
+    <string name="calibrating">Scanning Wi-Fi networks…</string>
+    <string name="calibration_saved">Fingerprint saved at (%1$.0f, %2$.0f) — %3$d APs detected</string>
+    <string name="calibration_points">%d calibration points saved</string>
+    <string name="clear_calibration">Clear All</string>
+
+    <!-- AR -->
+    <string name="ar_title">AR Navigation</string>
+    <string name="ar_instruction">Point your camera forward and follow the arrows</string>
+    <string name="ar_no_route">Select a destination on the Map tab first</string>
+    <string name="distance_to_next">%dm to next turn</string>
+    <string name="arrived">You have arrived!</string>
+
+    <!-- Crowd Detection (External Cameras) -->
+    <string name="crowd_clear">Area Clear</string>
+    <string name="crowd_moderate">Moderate Crowd (%d people)</string>
+    <string name="crowd_dense">This area is crowded (%d people detected)</string>
+    <string name="crowd_warning">⚠ This area is crowded</string>
+
+    <!-- Voice -->
+    <string name="voice_turn_left">Turn left ahead</string>
+    <string name="voice_turn_right">Turn right ahead</string>
+    <string name="voice_go_straight">Continue straight</string>
+    <string name="voice_arrived">You have arrived at your destination</string>
+    <string name="voice_area_crowded">Attention, this area is crowded</string>
+    <string name="voice_muted">Voice guidance muted</string>
+    <string name="voice_unmuted">Voice guidance enabled</string>
+
+    <!-- Permissions -->
+    <string name="permission_camera">Camera access is required for AR navigation and crowd detection</string>
+    <string name="permission_location">Location permission is required for Wi-Fi fingerprinting</string>
+    <string name="permission_denied">Permission denied. Some features may not work.</string>
+
+    <!-- Destinations -->
+    <string name="dest_entrance">Main Entrance</string>
+    <string name="dest_lobby">Lobby</string>
+    <string name="dest_room_a">Room A (Conference)</string>
+    <string name="dest_room_b">Room B (Lab)</string>
+    <string name="dest_room_c">Room C (Office)</string>
+    <string name="dest_cafeteria">Cafeteria</string>
+    <string name="dest_restroom">Restrooms</string>
+    <string name="dest_elevator">Elevator</string>
+    <string name="dest_stairs">Stairwell</string>
+    <string name="dest_exit">Emergency Exit</string>
+</resources>

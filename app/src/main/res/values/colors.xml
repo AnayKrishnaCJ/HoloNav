@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Brand Colors -->
+    <color name="primary">#FF00E5FF</color>           <!-- Cyan -->
+    <color name="primary_dark">#FF00B8D4</color>
+    <color name="primary_variant">#FF7C4DFF</color>    <!-- Purple accent -->
+    <color name="secondary">#FFBB86FC</color>
+    <color name="secondary_variant">#FF3700B3</color>
+
+    <!-- Background / Surface -->
+    <color name="background">#FF0A0E1A</color>         <!-- Deep dark blue -->
+    <color name="surface">#FF121829</color>
+    <color name="surface_elevated">#FF1A2340</color>
+    <color name="card_bg">#CC1A2340</color>             <!-- Semi-transparent -->
+
+    <!-- Text -->
+    <color name="on_primary">#FF000000</color>
+    <color name="on_background">#FFEAECF0</color>
+    <color name="on_surface">#FFEAECF0</color>
+    <color name="text_secondary">#FF8B95A8</color>
+    <color name="text_hint">#FF4A5568</color>
+
+    <!-- Status Colors -->
+    <color name="success">#FF00E676</color>
+    <color name="warning">#FFFFC107</color>
+    <color name="error">#FFFF5252</color>
+    <color name="crowd_alert">#FFFF1744</color>
+
+    <!-- Map Colors -->
+    <color name="map_wall">#FF2D3748</color>
+    <color name="map_room">#FF1A2340</color>
+    <color name="map_corridor">#FF243055</color>
+    <color name="map_user_dot">#FF00E5FF</color>
+    <color name="map_route">#FF7C4DFF</color>
+    <color name="map_destination">#FFFF6D00</color>
+    <color name="map_ap">#FF00E676</color>
+
+    <!-- Gradient Colors -->
+    <color name="gradient_start">#FF00E5FF</color>
+    <color name="gradient_end">#FF7C4DFF</color>
+
+    <!-- Overlay -->
+    <color name="overlay_dark">#B3000000</color>
+    <color name="ar_arrow">#FF00E5FF</color>
+    <color name="ar_arrow_glow">#8000E5FF</color>
+</resources>
