@@ -1,0 +1,260 @@
+# HoloNav — Complete App Explanation
+
+## What It Does
+
+HoloNav is a **native Android indoor navigation app** that guides users through buildings where GPS doesn't work. It uses Wi-Fi signals to locate the user, draws their position on an indoor map, computes the shortest path via A*, overlays AR arrows through the camera, detects crowded areas, and provides voice assistance.
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    MA["MainActivity<br/>(Central Orchestrator)"] -->|"2s polling loop"| WM["WifiLocalizationManager<br/>📍 Position"]
+    MA -->|"owns"| VG["VoiceGuideManager<br/>🔊 TTS Output"]
+    MA -->|"owns"| VC["VoiceCommandManager<br/>🎤 STT Input"]
+    MA -->|"owns"| CA["CrowdAnalyzer<br/>👥 TFLite"]
+    MA -->|"owns"| AS["AStarEngine<br/>🧭 Pathfinding"]
+    MA -->|"callbacks"| MF["MapFragment<br/>🗺️"]
+    MA -->|"callbacks"| AF["ARFragment<br/>📷"]
+    MA -->|"callbacks"| CF["CalibrationFragment<br/>⚙️"]
+```
+
+**[MainActivity](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#33-444)** is the brain — it runs a **2-second timer** that polls Wi-Fi position, tracks route progress, checks for deviation, and broadcasts updates to whichever fragment is active via callbacks:
+
+| Callback | Who Listens | What It Sends |
+|----------|------------|---------------|
+| `positionCallback` | MapFragment | [(x, y, confidence)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#79-83) |
+| `navigationCallback` | ARFragment | [(route, waypointIndex, x, y)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#79-83) |
+| `crowdAlertCallbacks` | MapFragment + ARFragment | [(cameraName, count, isCrowded)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#79-83) |
+| `wifiErrorCallback` | MapFragment + ARFragment | [(hasError)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#79-83) |
+| `routeUpdateCallback` | MapFragment | [(newPath)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#79-83) — from live recalculation |
+
+---
+
+## The 6 Core Engines
+
+### 1. 📍 Wi-Fi Fingerprinting — [WifiLocalizationManager.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/wifi/WifiLocalizationManager.kt)
+
+**Problem:** GPS doesn't work indoors. **Solution:** Use Wi-Fi signal patterns.
+
+**Phase 1 — Calibration (one-time setup):**
+1. User stands at a known map location and taps "Calibrate"
+2. App scans Wi-Fi **4 times over 8 seconds**, records signal strength (RSSI) from every access point
+3. Averages the RSSIs and stores a [Fingerprint(x, y, rssiMap)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/wifi/WifiLocalizationManager.kt#30-35) in the database
+
+**Phase 2 — Live Localization:**
+1. Every 2 seconds, app does a quick Wi-Fi scan
+2. **KNN algorithm (K=3):** Compares the live scan against all stored fingerprints using Euclidean distance in RSSI-space
+3. Takes the 3 closest fingerprints, does **inverse-distance-weighted average** of their positions
+4. Result: estimated [(x, y)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#79-83) with a confidence score (0–1)
+
+```
+Live scan: {AP1: -45dB, AP2: -67dB, AP3: -82dB}
+    ↓ compare against stored fingerprints
+Fingerprint A (lobby):     distance = 12.3
+Fingerprint B (corridor):  distance = 8.1  ← nearest
+Fingerprint C (room):      distance = 9.5
+    ↓ weighted average of B, C, A positions
+Estimated position: (352, 410), confidence: 0.78
+```
+
+**Error handling:** If Wi-Fi scan returns nothing → red banner: *"⚠ Wi-Fi scan unavailable"*
+
+---
+
+### 2. 🗺️ Indoor Map — [MapCanvasView.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/MapCanvasView.kt) + [Node.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/Node.kt)
+
+Custom [View](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/MapFragment.kt#46-54) rendering a **1000×700 virtual floor plan**:
+
+```
+┌─────────────────────────────────────────┐
+│  [Room A]     [Room B]      [Room C]    │
+│  Conference     Lab          Office     │
+│                                         │
+│═════════════════════════════════════════│ ← Main Corridor
+│                                         │
+│  [Entrance] [Restrooms]  [Cafeteria]   │
+│              [Stairwell]  [Exit]        │
+└─────────────────────────────────────────┘
+```
+
+| Visual Element | How It Looks |
+|----------------|-------------|
+| User position | Pulsing cyan dot with glow |
+| A* route | Animated purple dashed line |
+| Destination | Orange marker with pulse |
+| Wi-Fi APs | Green dots with signal rings |
+
+**Building Graph** — 21 nodes (corridor junctions + destinations) connected by bidirectional edges weighted by physical distance. [findNearestNode(x, y)](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/Node.kt#130-136) maps the user's position to the graph.
+
+**Touch:** Pinch-to-zoom + tap-to-select-destination.
+
+---
+
+### 3. 🧭 A* Pathfinding — [AStarEngine.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/AStarEngine.kt)
+
+Finds the **shortest walkable indoor path**:
+
+```mermaid
+graph LR
+    E["Entrance"] --> C1["Corridor W"] --> C2["Junction A"] --> C3["Center"] --> C4["Junction B"] --> C5["Corridor E"] --> CAF["Cafeteria"]
+    C2 --> N["North Wing"] --> LAB["Lab"]
+    C4 --> EL["Elevator"]
+    style E fill:#00E5FF,color:#000
+    style CAF fill:#FF6D00,color:#000
+```
+
+**Algorithm:** Priority queue with `f = g + h` (actual cost + Euclidean heuristic). Explores the graph, reconstructs the path by backtracking through parents.
+
+**Loading animation:** A* runs on a background coroutine (`Dispatchers.Default`). A semi-transparent overlay with a spinner shows *"Calculating route…"*.
+
+**Live recalculation:** Every 2 seconds during navigation, [isDeviatedFromRoute()](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#264-293) computes the **perpendicular distance** from the user to the current route segment. If >60px and >5s since last recalculation → recomputes A* and announces *"Recalculating route"*.
+
+---
+
+### 4. 📷 AR Navigation — [ARNavigationFragment.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/ar/ARNavigationFragment.kt) + [AROverlayView.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/ar/AROverlayView.kt)
+
+Camera preview with a **custom canvas overlay** that draws navigation arrows:
+
+1. Bearing to next waypoint: `atan2(targetX - userX, targetY - userY)`
+2. Arrow rotates to match, with pulsing glow animation
+3. [turnAngle()](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/AStarEngine.kt#117-132) determines label: *"↰ Turn Left"*, *"↑ Go Straight"*, *"Turn Right ↱"*
+4. Distance shown in meters (map units ÷ 3)
+5. Arrival: green checkmark + *"You Have Arrived!"*
+
+---
+
+### 5. 👥 Crowd Detection — [CrowdAnalyzer.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/crowd/CrowdAnalyzer.kt)
+
+TensorFlow Lite model polls **external college cameras**, detects people, classifies density:
+
+| Level | People | Status Bar | Action |
+|-------|--------|-----------|--------|
+| `CLEAR` | 0-few | Green | None |
+| `MODERATE` | Medium | Yellow | Info banner |
+| `DENSE` | Many | Red | Banner + Toast + Voice alert |
+
+**Crowd warnings are shown across 4 channels:**
+- **Top banner (Map)** — animated slide-in card: *"⚠ Area Ahead is Crowded — Hallway Camera — 15 people"* with dismiss button
+- **Bottom banner (AR)** — red overlay text on camera preview
+- **Toast** — system-level popup
+- **Voice** — TTS: *"Attention: Hallway area is crowded with 15 people"*
+
+> **Note:** Crowd info is advisory only — it does **not** auto-reroute the user.
+
+---
+
+### 6. 🔊 Voice Assistant
+
+#### 🎤 Part A — Voice Input: [VoiceCommandManager.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/voice/VoiceCommandManager.kt)
+
+User taps the mic button and says *"Navigate to Cafeteria"*:
+
+1. `SpeechRecognizer` converts speech → text
+2. Prefix stripped (*"navigate to"*, *"go to"*, *"take me to"*, *"find"*, etc.)
+3. **Fuzzy matching** against destination names:
+   - Exact match → substring match → reverse substring → word overlap
+4. On match → auto-fills destination → starts A* navigation → TTS: *"Navigating to Cafeteria"*
+5. On no match → Toast: *"No matching destination found"*
+
+#### 🔊 Part B — Voice Output: [VoiceGuideManager.kt](file:///c:/HoloNav/app/src/main/java/com/holonav/app/voice/VoiceGuideManager.kt)
+
+Distance-aware TTS using Android `TextToSpeech`:
+
+| When | Says |
+|------|------|
+| Approaching left turn | *"Turn left after 5 meters"* |
+| Approaching right turn | *"Turn right after 8 meters"* |
+| Straight segment | *"Continue straight for 12 meters"* |
+| Arrived | *"You have reached your destination"* |
+| Rerouting | *"Recalculating route"* |
+| Crowd | *"Attention: Hallway area is crowded"* |
+
+Debounced at 5-second intervals. Each waypoint announced only once. Mute toggle available.
+
+---
+
+## Map ↔ AR Toggle
+
+```mermaid
+graph LR
+    Map["🗺️ Map View"] <-->|"FAB button"| AR["📷 AR View"]
+```
+
+- **Map → AR:** Camera FAB. Route state preserved in [MainActivity](file:///c:/HoloNav/app/src/main/java/com/holonav/app/MainActivity.kt#33-444).
+- **AR → Map:** Map FAB. [restoreNavigationState()](file:///c:/HoloNav/app/src/main/java/com/holonav/app/map/MapFragment.kt#349-364) redraws the active route.
+- Active navigation, route, and destination persist across toggles.
+
+---
+
+## Complete Data Flow (One Cycle)
+
+```mermaid
+sequenceDiagram
+    participant T as ⏱️ 2s Timer
+    participant M as MainActivity
+    participant W as WiFi Manager
+    participant Map as Map Fragment
+    participant AR as AR Fragment
+    participant V as Voice Guide
+    participant C as Crowd Analyzer
+
+    T->>M: updatePosition()
+    M->>W: estimatePosition()
+    W-->>M: (x=352, y=410, conf=0.78)
+    M->>Map: positionCallback → draw blue dot
+
+    M->>M: updateRouteProgress()
+    Note over M: Is user >60px from route?
+    alt Deviated
+        M->>M: recalculateRoute() via A*
+        M->>Map: routeUpdateCallback(newPath)
+        M->>V: "Recalculating route"
+    end
+
+    M->>V: evaluateAndSpeak()
+    V-->>V: "Turn left after 5 meters"
+
+    M->>AR: navigationCallback → rotate arrow
+
+    C-->>M: onCrowdAnalyzed(DENSE, 15)
+    M->>Map: crowdAlert → show banner
+    M->>AR: crowdAlert → show banner
+    M->>V: "Area is crowded"
+```
+
+---
+
+## Project Structure
+
+```
+com.holonav.app/
+├── MainActivity.kt              ← Orchestrator: polling, routing, callbacks
+├── map/
+│   ├── Node.kt                  ← Node, Edge, BuildingGraph (21 nodes)
+│   ├── AStarEngine.kt           ← A* pathfinding + turn angle
+│   ├── MapCanvasView.kt         ← Custom canvas renderer
+│   └── MapFragment.kt           ← Map UI, controls, voice command, crowd banner
+├── ar/
+│   ├── ARNavigationFragment.kt  ← Camera + AR overlay controller
+│   └── AROverlayView.kt         ← Arrow, checkmark, bounding box renderer
+├── wifi/
+│   ├── WifiLocalizationManager.kt ← KNN + fingerprinting
+│   └── CalibrationFragment.kt   ← Calibration UI
+├── voice/
+│   ├── VoiceGuideManager.kt     ← TTS with distance-aware guidance
+│   └── VoiceCommandManager.kt   ← STT speech-to-destination
+└── crowd/
+    └── CrowdAnalyzer.kt         ← TFLite person detection from cameras
+```
+
+## Permissions
+
+| Permission | Used By |
+|-----------|---------|
+| `CAMERA` | AR preview |
+| `ACCESS_FINE_LOCATION` | Wi-Fi scanning |
+| `ACCESS_WIFI_STATE` / `CHANGE_WIFI_STATE` | Wi-Fi fingerprinting |
+| `RECORD_AUDIO` | Voice commands |
+| `INTERNET` | External camera access |

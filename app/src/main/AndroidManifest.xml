@@ -17,6 +17,9 @@
     <!-- Camera for AR + Crowd Detection -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Microphone for Voice Commands -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- AR Required -->
     <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
     <uses-feature android:name="android.hardware.wifi" android:required="true" />

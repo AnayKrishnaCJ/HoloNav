@@ -11,6 +11,7 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.holonav.app.MainActivity
 import com.holonav.app.R
 import com.holonav.app.databinding.FragmentArBinding
@@ -24,8 +25,10 @@ import kotlin.math.atan2
  * AR Navigation Fragment.
  *
  * Displays the camera preview with directional arrows overlaid via AROverlayView.
- * Crowd detection is handled separately by external cameras — this fragment
- * only receives crowd status updates and displays informational messages.
+ * Features:
+ * - Wi-Fi error banner
+ * - FAB to switch back to Map view
+ * - Crowd detection status from external cameras
  */
 class ARNavigationFragment : Fragment() {
 
@@ -62,6 +65,14 @@ class ARNavigationFragment : Fragment() {
 
         // Register for crowd status updates from external cameras
         registerCrowdUpdates()
+
+        // Register for Wi-Fi error updates
+        registerWifiErrorCallback()
+
+        // Mode toggle: AR → Map
+        binding.fabSwitchMap.setOnClickListener {
+            findNavController().navigate(R.id.nav_map)
+        }
     }
 
     private fun hasCameraPermission(): Boolean {
@@ -105,13 +116,28 @@ class ARNavigationFragment : Fragment() {
     private fun registerCrowdUpdates() {
         val mainActivity = activity as? MainActivity ?: return
 
-        mainActivity.setCrowdAlertCallback { cameraName, personCount, isCrowded ->
+        mainActivity.addCrowdAlertCallback { cameraName, personCount, isCrowded ->
             if (isCrowded) {
                 binding.crowdWarningBanner.visibility = View.VISIBLE
                 binding.crowdWarningBanner.text =
                     "⚠ $cameraName: This area is crowded ($personCount people detected)"
             } else {
                 binding.crowdWarningBanner.visibility = View.GONE
+            }
+        }
+    }
+
+    /**
+     * Register for Wi-Fi error notifications to show/hide the error banner.
+     */
+    private fun registerWifiErrorCallback() {
+        val mainActivity = activity as? MainActivity ?: return
+        mainActivity.setWifiErrorCallback { hasError ->
+            if (hasError) {
+                binding.wifiErrorCard.visibility = View.VISIBLE
+                binding.wifiErrorText.text = getString(R.string.wifi_error)
+            } else {
+                binding.wifiErrorCard.visibility = View.GONE
             }
         }
     }

@@ -12,6 +12,11 @@ import kotlin.math.abs
  * Voice Navigation Guide using Android TextToSpeech.
  *
  * Provides turn-by-turn spoken directions based on the A* route.
+ * Enhanced with distance-aware instructions:
+ * - "Turn left after 5 meters"
+ * - "Continue straight for 12 meters"
+ * - "You have reached your destination"
+ *
  * Debounces instructions to avoid repeating too frequently.
  */
 class VoiceGuideManager(context: Context) {
@@ -21,6 +26,7 @@ class VoiceGuideManager(context: Context) {
         private const val DEBOUNCE_MS = 5000L       // Min time between announcements
         private const val PROXIMITY_THRESHOLD = 50f  // Map units to trigger next instruction
         private const val TURN_THRESHOLD = 35f       // Degrees to qualify as a turn
+        private const val MAP_UNITS_PER_METER = 3f   // Conversion factor: map units → meters
     }
 
     private var tts: TextToSpeech? = null
@@ -46,6 +52,11 @@ class VoiceGuideManager(context: Context) {
 
     /**
      * Evaluate current position against the route and speak if needed.
+     *
+     * Enhanced with distance-aware messages:
+     * - "Turn left after X meters"
+     * - "Continue straight for X meters"
+     * - "You have reached your destination"
      *
      * @param currentX User's estimated X position
      * @param currentY User's estimated Y position
@@ -73,23 +84,35 @@ class VoiceGuideManager(context: Context) {
         if (distance > PROXIMITY_THRESHOLD) return
         if (currentNodeIndex == lastAnnouncedNodeIndex) return
 
+        // Calculate distance to next turn or destination (in meters)
+        val distToNextMeters = (distance / MAP_UNITS_PER_METER).toInt()
+
         val instruction = when {
             // Arrived at final destination
             currentNodeIndex == route.size - 1 -> {
-                "You have arrived at your destination"
+                "You have reached your destination"
             }
-            // Calculate turn direction
+            // Calculate turn direction with distance
             currentNodeIndex > 0 && currentNodeIndex < route.size - 1 -> {
                 val prev = route[currentNodeIndex - 1]
                 val current = route[currentNodeIndex]
                 val next = route[currentNodeIndex + 1]
                 val angle = astarEngine.turnAngle(prev, current, next)
 
+                // Calculate distance from current waypoint to next waypoint (in meters)
+                val segmentDist = (current.distanceTo(next) / MAP_UNITS_PER_METER).toInt()
+
                 when {
-                    angle < -TURN_THRESHOLD -> "Turn left ahead"
-                    angle > TURN_THRESHOLD -> "Turn right ahead"
-                    else -> "Continue straight"
+                    angle < -TURN_THRESHOLD -> "Turn left after $segmentDist meters"
+                    angle > TURN_THRESHOLD -> "Turn right after $segmentDist meters"
+                    else -> "Continue straight for $segmentDist meters"
                 }
+            }
+            // First node — announce direction to next
+            currentNodeIndex == 0 && route.size > 1 -> {
+                val next = route[1]
+                val segmentDist = (targetNode.distanceTo(next) / MAP_UNITS_PER_METER).toInt()
+                "Continue straight for $segmentDist meters"
             }
             else -> "Continue straight"
         }

@@ -16,6 +16,99 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Wi-Fi Error Banner (overlays top of map) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/wifi_error_card"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#CC331111"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="6dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/wifi_error_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12dp"
+            android:text="@string/wifi_error"
+            android:textColor="@color/error"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:drawablePadding="8dp" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Crowd Warning Banner (overlays top of map, below Wi-Fi error) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/crowd_warning_card"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="4dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#DD2D1111"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="6dp"
+        app:strokeColor="@color/error"
+        app:strokeWidth="1dp"
+        app:layout_constraintTop_toBottomOf="@id/wifi_error_card"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚠"
+                android:textSize="20sp"
+                android:layout_marginEnd="10dp" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/crowd_warning_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/crowd_area_ahead"
+                    android:textColor="@color/error"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/crowd_warning_detail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text=""
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/crowd_warning_dismiss"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:background="@android:color/transparent"
+                android:contentDescription="Dismiss"
+                android:padding="4dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
     <!-- Route Info Overlay -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/route_info_card"
@@ -26,7 +119,7 @@
         app:cardBackgroundColor="@color/card_bg"
         app:cardCornerRadius="12dp"
         app:cardElevation="4dp"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/crowd_warning_card"
         app:layout_constraintEnd_toEndOf="parent">
 
         <TextView
@@ -37,6 +130,56 @@
             android:textColor="@color/on_surface"
             android:textSize="13sp" />
     </com.google.android.material.card.MaterialCardView>
+
+    <!-- Loading Overlay (centered over map) -->
+    <FrameLayout
+        android:id="@+id/loading_overlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#AA0A0E1A"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintTop_toTopOf="@id/map_canvas"
+        app:layout_constraintBottom_toBottomOf="@id/map_canvas"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_gravity="center">
+
+            <ProgressBar
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/calculating_route"
+                android:textColor="@color/on_surface"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- FAB: Switch to AR View -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_switch_ar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:contentDescription="@string/switch_to_ar"
+        android:src="@android:drawable/ic_menu_camera"
+        app:backgroundTint="@color/primary"
+        app:tint="@android:color/white"
+        app:layout_constraintBottom_toTopOf="@id/map_controls"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Bottom Controls -->
     <LinearLayout
@@ -92,6 +235,16 @@
                 android:src="@android:drawable/ic_btn_speak_now"
                 android:background="@color/surface"
                 android:contentDescription="Toggle voice"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/btn_voice_command"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                android:background="@color/primary"
+                android:contentDescription="@string/mic_content_desc"
                 android:padding="8dp" />
         </LinearLayout>
     </LinearLayout>

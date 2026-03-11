@@ -36,6 +36,8 @@
     <string name="crowd_moderate">Moderate Crowd (%d people)</string>
     <string name="crowd_dense">This area is crowded (%d people detected)</string>
     <string name="crowd_warning">⚠ This area is crowded</string>
+    <string name="crowd_area_ahead">Area Ahead is Crowded</string>
+    <string name="crowd_detail">%1$s — %2$d people detected</string>
 
     <!-- Voice -->
     <string name="voice_turn_left">Turn left ahead</string>
@@ -62,4 +64,33 @@
     <string name="dest_elevator">Elevator</string>
     <string name="dest_stairs">Stairwell</string>
     <string name="dest_exit">Emergency Exit</string>
+
+    <!-- Live Recalculation -->
+    <string name="rerouting">Recalculating route…</string>
+    <string name="voice_rerouting">Recalculating route</string>
+
+    <!-- Loading -->
+    <string name="calculating_route">Calculating route…</string>
+
+    <!-- Error Handling -->
+    <string name="wifi_error">⚠ Wi-Fi scan unavailable — position may be inaccurate</string>
+    <string name="wifi_no_calibration">No calibration data — using demo position</string>
+
+    <!-- Mode Toggle -->
+    <string name="switch_to_ar">Switch to AR</string>
+    <string name="switch_to_map">Switch to Map</string>
+
+    <!-- Voice Input (Speech Recognition) -->
+    <string name="voice_listening">Listening… Say a destination</string>
+    <string name="voice_no_match">No matching destination found</string>
+    <string name="voice_navigating_to">Navigating to %s</string>
+    <string name="voice_cmd_hint">🎤 Say "Navigate to…"</string>
+    <string name="voice_not_available">Speech recognition not available on this device</string>
+    <string name="voice_error">Voice recognition error. Please try again.</string>
+    <string name="mic_content_desc">Voice command</string>
+
+    <!-- Enhanced Voice Output (Distance-aware) -->
+    <string name="voice_turn_left_dist">Turn left after %d meters</string>
+    <string name="voice_turn_right_dist">Turn right after %d meters</string>
+    <string name="voice_straight_dist">Continue straight for %d meters</string>
 </resources>
