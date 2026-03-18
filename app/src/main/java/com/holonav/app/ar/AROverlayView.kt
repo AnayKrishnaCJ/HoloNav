@@ -7,17 +7,17 @@ import android.util.AttributeSet
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import com.holonav.app.crowd.CrowdAnalyzer
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * Custom overlay View drawn on top of the camera preview.
+ * 2D HUD Overlay drawn on top of the ArSceneView.
  *
- * Renders:
- * - Directional navigation arrows pointing toward the next waypoint
- * - Distance and direction text
+ * This is a lightweight canvas for elements that should be screen-space
+ * (not 3D world-space):
+ * - Arrival checkmark + text
  * - Crowd detection bounding boxes
- * - Warning overlays
+ *
+ * The 3D directional arrows and route line are now handled by
+ * ARRouteRenderer in the ArSceneView scene graph.
  */
 class AROverlayView @JvmOverloads constructor(
     context: Context,
@@ -26,9 +26,9 @@ class AROverlayView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     // --- Navigation State ---
-    var bearingToNext: Float = 0f       // Degrees: 0=forward, negative=left, positive=right
-    var distanceToNext: Float = 0f      // Map-units to next waypoint
-    var directionLabel: String = ""     // "Turn Left", "Go Straight", etc.
+    var bearingToNext: Float = 0f
+    var distanceToNext: Float = 0f
+    var directionLabel: String = ""
     var isNavigating: Boolean = false
     var hasArrived: Boolean = false
 
@@ -37,22 +37,9 @@ class AROverlayView @JvmOverloads constructor(
     var crowdLevel: CrowdAnalyzer.CrowdLevel = CrowdAnalyzer.CrowdLevel.CLEAR
 
     // --- Animation ---
-    private var arrowPulse = 1f
-    private var arrowGlowAlpha = 80
+    private var pulseScale = 1f
 
     // --- Paints ---
-    private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF")
-        style = Paint.Style.FILL
-        setShadowLayer(20f, 0f, 0f, Color.parseColor("#8000E5FF"))
-    }
-
-    private val arrowStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-    }
-
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#4000E5FF")
         style = Paint.Style.FILL
@@ -64,14 +51,6 @@ class AROverlayView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         setShadowLayer(8f, 0f, 2f, Color.BLACK)
-    }
-
-    private val subtextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF")
-        textSize = 64f
-        textAlign = Paint.Align.CENTER
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        setShadowLayer(10f, 0f, 2f, Color.BLACK)
     }
 
     private val bboxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -93,18 +72,30 @@ class AROverlayView @JvmOverloads constructor(
         setShadowLayer(12f, 0f, 2f, Color.BLACK)
     }
 
-    init {
-        setLayerType(LAYER_TYPE_SOFTWARE, null) // Required for shadow layers
+    // --- Navigation indicator (small compass-like bearing dot) ---
+    private val bearingDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#00E5FF")
+        style = Paint.Style.FILL
+        setShadowLayer(12f, 0f, 0f, Color.parseColor("#8000E5FF"))
+    }
 
-        // Arrow pulse animation
+    private val bearingRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#4000E5FF")
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
+
+    init {
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+
+        // Pulse animation for arrival + bearing dot
         ValueAnimator.ofFloat(0.85f, 1.15f).apply {
             duration = 1000
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener {
-                arrowPulse = it.animatedValue as Float
-                arrowGlowAlpha = (80 * arrowPulse).toInt()
+                pulseScale = it.animatedValue as Float
                 invalidate()
             }
             start()
@@ -124,52 +115,43 @@ class AROverlayView @JvmOverloads constructor(
             return
         }
 
-        // Draw navigation arrow
-        drawDirectionArrow(canvas, centerX, centerY - 80f)
+        // Draw small bearing indicator (compass dot at edge of screen)
+        drawBearingIndicator(canvas, centerX, centerY)
 
         // Draw crowd detection boxes
         drawCrowdDetections(canvas)
     }
 
-    private fun drawDirectionArrow(canvas: Canvas, cx: Float, cy: Float) {
-        canvas.save()
-        canvas.translate(cx, cy)
+    /**
+     * Draw a small bearing indicator at the edge of the screen.
+     * Shows which direction the next waypoint is relative to the camera.
+     */
+    private fun drawBearingIndicator(canvas: Canvas, cx: Float, cy: Float) {
+        val radius = 120f
+        val dotRadius = 12f * pulseScale
 
-        // Rotate arrow based on bearing
+        // Draw ring
+        bearingRingPaint.alpha = (100 * pulseScale).toInt()
+        canvas.drawCircle(cx, cy - 200f, radius, bearingRingPaint)
+
+        // Draw bearing dot on the ring
+        canvas.save()
+        canvas.translate(cx, cy - 200f)
         canvas.rotate(bearingToNext)
 
-        val arrowSize = 80f * arrowPulse
-
-        // Glow circle behind arrow
-        glowPaint.alpha = arrowGlowAlpha
-        canvas.drawCircle(0f, 0f, arrowSize * 1.5f, glowPaint)
-
-        // Arrow shape (pointing up by default)
-        val arrowPath = Path().apply {
-            moveTo(0f, -arrowSize)          // Tip
-            lineTo(-arrowSize * 0.6f, arrowSize * 0.4f)  // Bottom-left
-            lineTo(-arrowSize * 0.15f, arrowSize * 0.15f) // Inner-left
-            lineTo(-arrowSize * 0.15f, arrowSize)          // Tail-left
-            lineTo(arrowSize * 0.15f, arrowSize)           // Tail-right
-            lineTo(arrowSize * 0.15f, arrowSize * 0.15f)  // Inner-right
-            lineTo(arrowSize * 0.6f, arrowSize * 0.4f)    // Bottom-right
-            close()
-        }
-
-        canvas.drawPath(arrowPath, arrowPaint)
-        canvas.drawPath(arrowPath, arrowStrokePaint)
+        bearingDotPaint.alpha = (200 * pulseScale).toInt()
+        canvas.drawCircle(0f, -radius, dotRadius, bearingDotPaint)
 
         canvas.restore()
-
-        // Direction text below arrow
-        canvas.drawText(directionLabel, cx, cy + 120f, textPaint)
-
-        // Distance text
-        val distText = if (distanceToNext > 0) "${distanceToNext.toInt()}m" else ""
-        canvas.drawText(distText, cx, cy + 200f, subtextPaint)
     }
 
     private fun drawArrivalScreen(canvas: Canvas, cx: Float, cy: Float) {
+        // Pulsing glow
+        val glowRadius = 120f * pulseScale
+        glowPaint.color = Color.parseColor("#2000E676")
+        canvas.drawCircle(cx, cy, glowRadius, glowPaint)
+        glowPaint.color = Color.parseColor("#4000E5FF")
+
         // Checkmark
         val checkPath = Path().apply {
             moveTo(cx - 50f, cy)
@@ -185,11 +167,6 @@ class AROverlayView @JvmOverloads constructor(
             setShadowLayer(15f, 0f, 0f, Color.parseColor("#00E676"))
         }
 
-        // Glow
-        glowPaint.color = Color.parseColor("#2000E676")
-        canvas.drawCircle(cx, cy, 120f, glowPaint)
-        glowPaint.color = Color.parseColor("#4000E5FF")
-
         canvas.drawPath(checkPath, checkPaint)
         canvas.drawText("You Have Arrived!", cx, cy + 100f, arrivedPaint)
     }
@@ -197,9 +174,8 @@ class AROverlayView @JvmOverloads constructor(
     private fun drawCrowdDetections(canvas: Canvas) {
         if (crowdDetections.isEmpty()) return
 
-        // Scale detection coordinates to view size
         for (det in crowdDetections) {
-            val left = det.left / 300f * width  // Normalize from model coords
+            val left = det.left / 300f * width
             val top = det.top / 300f * height
             val right = det.right / 300f * width
             val bottom = det.bottom / 300f * height
@@ -207,7 +183,6 @@ class AROverlayView @JvmOverloads constructor(
             canvas.drawRect(left, top, right, bottom, bboxFillPaint)
             canvas.drawRect(left, top, right, bottom, bboxPaint)
 
-            // Confidence label
             val confText = "${(det.confidence * 100).toInt()}%"
             val smallText = Paint(textPaint).apply {
                 textSize = 20f

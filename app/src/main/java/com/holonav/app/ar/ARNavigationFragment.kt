@@ -7,8 +7,6 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.camera.core.*
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
@@ -17,18 +15,21 @@ import com.holonav.app.R
 import com.holonav.app.databinding.FragmentArBinding
 import com.holonav.app.map.AStarEngine
 import com.holonav.app.map.Node
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import kotlin.math.atan2
 
 /**
- * AR Navigation Fragment.
+ * AR Navigation Fragment with ARCore 3D integration.
  *
- * Displays the camera preview with directional arrows overlaid via AROverlayView.
- * Features:
- * - Wi-Fi error banner
- * - FAB to switch back to Map view
- * - Crowd detection status from external cameras
+ * Uses Sceneview's ArSceneView for:
+ * - 3D arrow nodes at upcoming waypoints
+ * - Glowing line segments connecting the route
+ * - Progressive removal of passed nodes
+ *
+ * Keeps 2D HUD overlay for:
+ * - Direction text + distance
+ * - Crowd detection banners
+ * - Wi-Fi error banners
+ * - Arrival screen
  */
 class ARNavigationFragment : Fragment() {
 
@@ -39,8 +40,11 @@ class ARNavigationFragment : Fragment() {
     private var _binding: FragmentArBinding? = null
     private val binding get() = _binding!!
 
-    private var cameraExecutor: ExecutorService? = null
     private val astarEngine = AStarEngine()
+
+    // 3D rendering
+    private var routeRenderer: ARRouteRenderer? = null
+    private val coordConverter = ARCoordinateConverter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -54,13 +58,13 @@ class ARNavigationFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        cameraExecutor = Executors.newSingleThreadExecutor()
+        // Initialize 3D route renderer
+        routeRenderer = ARRouteRenderer(requireContext(), coordConverter)
 
-        if (hasCameraPermission()) {
-            startCamera()
-        }
+        // Configure ArSceneView
+        setupArSceneView()
 
-        // Start navigation updates
+        // Start navigation updates (both 2D HUD and 3D nodes)
         startNavigationUpdates()
 
         // Register for crowd status updates from external cameras
@@ -75,38 +79,27 @@ class ARNavigationFragment : Fragment() {
         }
     }
 
-    private fun hasCameraPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            requireContext(), Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-    }
+    /**
+     * Configure the ArSceneView.
+     */
+    private fun setupArSceneView() {
+        try {
+            // ArSceneView handles camera permissions and AR session internally
+            binding.arSceneView.apply {
+                // Enable plane detection for better spatial understanding
+                planeRenderer.isVisible = false  // Hide plane visualization (we only need tracking)
 
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
-
-        cameraProviderFuture.addListener({
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-
-                // Preview only — no image analysis needed since crowd detection uses external cameras
-                val preview = Preview.Builder()
-                    .build()
-                    .also {
-                        it.surfaceProvider = binding.cameraPreview.surfaceProvider
-                    }
-
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    viewLifecycleOwner,
-                    cameraSelector,
-                    preview
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Camera init failed: ${e.message}", e)
+                // Set up frame update listener for continuous route updates
+                onSessionUpdated = { session, frame ->
+                    // Frame updates are handled via navigation callback
+                    // The 3D nodes auto-update their positions relative to the AR world
+                }
             }
-        }, ContextCompat.getMainExecutor(requireContext()))
+
+            Log.d(TAG, "ArSceneView configured successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "ArSceneView setup failed: ${e.message}", e)
+        }
     }
 
     /**
@@ -142,6 +135,13 @@ class ARNavigationFragment : Fragment() {
         }
     }
 
+    /**
+     * Register for navigation updates from MainActivity.
+     *
+     * Updates both:
+     * 1. 3D scene: arrow nodes + line segments via ARRouteRenderer
+     * 2. 2D HUD: direction text, distance, arrival screen via AROverlayView
+     */
     private fun startNavigationUpdates() {
         val mainActivity = activity as? MainActivity ?: return
 
@@ -149,10 +149,18 @@ class ARNavigationFragment : Fragment() {
             if (route.isEmpty() || currentIndex >= route.size) {
                 binding.arOverlay.isNavigating = false
                 binding.arDirectionText.text = getString(R.string.ar_no_route)
+                routeRenderer?.clearAll(binding.arSceneView)
                 return@setNavigationCallback
             }
 
             binding.arOverlay.isNavigating = true
+
+            // --- 3D Update: Place/update arrow nodes and line segments ---
+            routeRenderer?.updateRoute(
+                binding.arSceneView, route, currentIndex, userX, userY
+            )
+
+            // --- 2D HUD Update ---
 
             // Check if arrived
             if (currentIndex == route.size - 1) {
@@ -166,6 +174,9 @@ class ARNavigationFragment : Fragment() {
                     binding.arDirectionText.text = getString(R.string.arrived)
                     binding.arDistanceText.text = ""
                     binding.arOverlay.invalidate()
+
+                    // Show 3D arrival marker
+                    routeRenderer?.showArrival(binding.arSceneView, target, userX, userY)
                     return@setNavigationCallback
                 }
             }
@@ -211,7 +222,7 @@ class ARNavigationFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        cameraExecutor?.shutdown()
+        routeRenderer?.destroy()
         _binding = null
     }
 }
