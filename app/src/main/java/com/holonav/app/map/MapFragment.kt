@@ -103,6 +103,18 @@ class MapFragment : Fragment(), VoiceCommandManager.VoiceCommandCallback {
             findNavController().navigate(R.id.nav_ar)
         }
 
+        // Toggle 2D/3D Map View
+        binding.fabSwitch3d.setOnClickListener {
+            binding.mapCanvas.toggle3DMode()
+            if (binding.mapCanvas.is3DMode) {
+                binding.fabSwitch3d.text = "2D"
+                binding.fabSwitch3d.setIconResource(android.R.drawable.ic_menu_mapmode)
+            } else {
+                binding.fabSwitch3d.text = "3D"
+                binding.fabSwitch3d.icon = null
+            }
+        }
+
         // Voice command mic button
         binding.btnVoiceCommand.setOnClickListener {
             startVoiceCommand()

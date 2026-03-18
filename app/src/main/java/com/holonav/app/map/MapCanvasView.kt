@@ -48,6 +48,15 @@ class MapCanvasView @JvmOverloads constructor(
     var showAccessPoints: Boolean = false
     var calibrationPoints: List<Pair<Float, Float>> = emptyList()
 
+    // --- View Modes ---
+    var is3DMode: Boolean = false
+        private set
+
+    fun toggle3DMode() {
+        is3DMode = !is3DMode
+        invalidate()
+    }
+
     // --- Touch & Interaction ---
     var onMapTapped: ((Float, Float) -> Unit)? = null
     private var scaleFactor = 1f
@@ -216,6 +225,14 @@ class MapCanvasView @JvmOverloads constructor(
         canvas.translate(offsetX + translateX, offsetY + translateY)
         canvas.scale(baseScale * scaleFactor, baseScale * scaleFactor)
 
+        if (is3DMode) {
+            // Apply isometric projection (rotate 45, scale Y 0.5) centered on map
+            canvas.translate(mapWidth / 2f, mapHeight / 2f)
+            canvas.scale(1f, 0.5f)
+            canvas.rotate(45f)
+            canvas.translate(-mapWidth / 2f, -mapHeight / 2f)
+        }
+
         // Background
         canvas.drawColor(Color.parseColor("#0A0E1A"))
 
@@ -229,15 +246,44 @@ class MapCanvasView @JvmOverloads constructor(
 
         // Rooms
         for (room in rooms) {
-            canvas.drawRoundRect(room.rect, 12f, 12f, roomPaint)
-            canvas.drawRoundRect(room.rect, 12f, 12f, roomStrokePaint)
+            if (is3DMode) {
+                // Extruded walls
+                val wallPaint = Paint(roomPaint).apply { color = Color.parseColor("#151D33") }
+                canvas.save()
+                // Extrude up (diagonal -X, -Y in 45deg space is screen UP)
+                for (h in 0..40 step 2) {
+                    canvas.translate(-2f, -2f)
+                    canvas.drawRoundRect(room.rect, 12f, 12f, wallPaint)
+                }
+                // Roof
+                canvas.drawRoundRect(room.rect, 12f, 12f, roomPaint)
+                canvas.drawRoundRect(room.rect, 12f, 12f, roomStrokePaint)
 
-            // Room label
-            val lines = room.name.split("\n")
-            val centerX = room.rect.centerX()
-            val centerY = room.rect.centerY() - (lines.size - 1) * 8f
-            for ((i, line) in lines.withIndex()) {
-                canvas.drawText(line, centerX, centerY + i * 18f, labelPaint)
+                // Room label upright
+                val lines = room.name.split("\n")
+                val centerX = room.rect.centerX()
+                val centerY = room.rect.centerY() - (lines.size - 1) * 8f
+                
+                canvas.save()
+                canvas.rotate(-45f, centerX, centerY)
+                canvas.scale(1f, 2f, centerX, centerY)
+                for ((i, line) in lines.withIndex()) {
+                    canvas.drawText(line, centerX, centerY + i * 18f, labelPaint)
+                }
+                canvas.restore()
+                
+                canvas.restore()
+            } else {
+                canvas.drawRoundRect(room.rect, 12f, 12f, roomPaint)
+                canvas.drawRoundRect(room.rect, 12f, 12f, roomStrokePaint)
+
+                // Room label
+                val lines = room.name.split("\n")
+                val centerX = room.rect.centerX()
+                val centerY = room.rect.centerY() - (lines.size - 1) * 8f
+                for ((i, line) in lines.withIndex()) {
+                    canvas.drawText(line, centerX, centerY + i * 18f, labelPaint)
+                }
             }
         }
 
@@ -259,10 +305,21 @@ class MapCanvasView @JvmOverloads constructor(
 
         // Destination marker
         destinationNode?.let { dest ->
-            canvas.drawCircle(dest.x, dest.y, 14f, destPaint)
-            destPaint.alpha = 100
-            canvas.drawCircle(dest.x, dest.y, 22f, destPaint)
-            destPaint.alpha = 255
+            if (is3DMode) {
+                canvas.save()
+                for (h in 0..30 step 2) {
+                    canvas.translate(-2f, -2f)
+                    canvas.drawCircle(dest.x, dest.y, 14f, destPaint)
+                }
+                val pinWhite = Paint(destPaint).apply { color = Color.WHITE }
+                canvas.drawCircle(dest.x, dest.y, 6f, pinWhite)
+                canvas.restore()
+            } else {
+                canvas.drawCircle(dest.x, dest.y, 14f, destPaint)
+                destPaint.alpha = 100
+                canvas.drawCircle(dest.x, dest.y, 22f, destPaint)
+                destPaint.alpha = 255
+            }
         }
 
         // User position
@@ -304,17 +361,36 @@ class MapCanvasView @JvmOverloads constructor(
     }
 
     private fun drawUserDot(canvas: Canvas) {
-        // Pulse glow
-        userGlowPaint.alpha = userPulseAlpha
-        canvas.drawCircle(userX, userY, userPulseRadius, userGlowPaint)
+        if (is3DMode) {
+            canvas.save()
+            // Pulse glow on floor
+            userGlowPaint.alpha = userPulseAlpha
+            canvas.drawCircle(userX, userY, userPulseRadius, userGlowPaint)
 
-        // Core dot
-        canvas.drawCircle(userX, userY, 10f, userDotPaint)
+            // Draw a cylindrical avatar
+            for (h in 0..20 step 2) {
+                canvas.translate(-2f, -2f)
+                canvas.drawCircle(userX, userY, 10f, userDotPaint)
+            }
+            // Inner white dot
+            userDotPaint.color = Color.WHITE
+            canvas.drawCircle(userX, userY, 4f, userDotPaint)
+            userDotPaint.color = Color.parseColor("#00E5FF")
+            
+            canvas.restore()
+        } else {
+            // Pulse glow
+            userGlowPaint.alpha = userPulseAlpha
+            canvas.drawCircle(userX, userY, userPulseRadius, userGlowPaint)
 
-        // Inner white dot
-        userDotPaint.color = Color.WHITE
-        canvas.drawCircle(userX, userY, 4f, userDotPaint)
-        userDotPaint.color = Color.parseColor("#00E5FF")
+            // Core dot
+            canvas.drawCircle(userX, userY, 10f, userDotPaint)
+
+            // Inner white dot
+            userDotPaint.color = Color.WHITE
+            canvas.drawCircle(userX, userY, 4f, userDotPaint)
+            userDotPaint.color = Color.parseColor("#00E5FF")
+        }
     }
 
     private fun drawAccessPoints(canvas: Canvas) {
